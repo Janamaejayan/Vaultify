@@ -33,14 +33,15 @@ def verify_password(plain_password: str, password_hash: str) -> bool:
 
 # ── JWT Tokens ───────────────────────────────────────────────
 
-def generate_token(user_id: int, username: str) -> str:
+def generate_token(user_id: int, username: str, session_id: str = "") -> str:
     """
-    Create a signed JWT containing user_id and username.
+    Create a signed JWT containing user_id, username, and optional session_id.
     Token expires after JWT_EXPIRY_HOURS (from config).
     """
     payload = {
-        "user_id":  user_id,
-        "username": username,
+        "user_id":    user_id,
+        "username":   username,
+        "session_id": session_id,
         "exp": datetime.datetime.utcnow()
                + datetime.timedelta(hours=config.JWT_EXPIRY_HOURS),
         "iat": datetime.datetime.utcnow(),

@@ -19,13 +19,16 @@ const BASE_URL = 'http://localhost:5000/api';
 ──────────────────────────────────────────────────────────── */
 function getToken()              { return sessionStorage.getItem('vaultify_token'); }
 function getUsername()           { return sessionStorage.getItem('vaultify_username'); }
-function setSession(token, user) {
-  sessionStorage.setItem('vaultify_token',    token);
-  sessionStorage.setItem('vaultify_username', user);
+function getSessionId()          { return sessionStorage.getItem('vaultify_session_id'); }
+function setSession(token, user, sessionId) {
+  sessionStorage.setItem('vaultify_token',      token);
+  sessionStorage.setItem('vaultify_username',   user);
+  sessionStorage.setItem('vaultify_session_id', sessionId || '');
 }
 function clearSession() {
   sessionStorage.removeItem('vaultify_token');
   sessionStorage.removeItem('vaultify_username');
+  sessionStorage.removeItem('vaultify_session_id');
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -146,14 +149,22 @@ const PAGE_MAP = {
   'view-passwords': { sectionId: 'page-view-passwords', title: 'Stored Passwords'   },
   'generator':      { sectionId: 'page-generator',      title: 'Password Generator' },
   'activity-logs':  { sectionId: 'page-activity-logs',  title: 'Activity Logs'      },
+  'sessions':       { sectionId: 'page-sessions',       title: 'Active Sessions'    },
 };
 
-// In-memory activity log (session-scoped — not persisted to backend)
-const activityLog = [];
-
-function addLog(type, message) {
-  activityLog.unshift({ type, message, time: new Date().toISOString() });
-  if (activityLog.length > 200) activityLog.pop();
+/**
+ * addLog — persists an activity log to the backend (fire-and-forget).
+ * Falls back gracefully if the user is not yet authenticated.
+ */
+async function addLog(type, message) {
+  const token = getToken();
+  if (!token) return;
+  try {
+    await apiFetch('/logs', {
+      method: 'POST',
+      body: JSON.stringify({ type, message }),
+    });
+  } catch { /* never disrupt the caller */ }
 }
 
 function navigateTo(page) {
@@ -168,6 +179,8 @@ function navigateTo(page) {
   document.getElementById('sidebar')?.classList.remove('open');
   if (page === 'view-passwords') loadPasswordTable();
   if (page === 'activity-logs')  renderLogs();
+  if (page === 'generator')      loadGeneratorHistory();
+  if (page === 'sessions')       loadSessions();
 }
 
 /* ────────────────────────────────────────────────────────────
@@ -217,15 +230,17 @@ function initLoginForm() {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
-      setSession(data.token, data.username);
+      setSession(data.token, data.username, data.session_id);
       showAlert(alertEl, 'success', '✓ Login successful! Redirecting…');
       showToast('success', `Welcome back, ${data.username}!`);
       addLog('success', `Login successful for "${username}".`);
-      setTimeout(() => showDashboard(data.username), 700);
+      setTimeout(() => {
+        showDashboard(data.username);
+        if (data.new_device) showNewDeviceAlert();
+      }, 700);
     } catch (err) {
       showAlert(alertEl, 'error', `✗ ${err.message}`);
       showToast('error', err.message);
-      addLog('error', `Failed login attempt for "${username}": ${err.message}`);
     } finally {
       btn.disabled  = false;
       btn.innerHTML = '<i class="fas fa-right-to-bracket"></i> Login';
@@ -267,7 +282,6 @@ function initRegisterForm() {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
-      addLog('success', `New account registered: "${username}".`);
       showToast('success', 'Account created! You can now log in.');
       form.reset();
       updateStrengthUI('strength-bar', 'strength-label', '');
@@ -502,7 +516,7 @@ function escHtml(str = '') {
 }
 
 /* ────────────────────────────────────────────────────────────
-   PASSWORD GENERATOR  (fully client-side — no API needed)
+   PASSWORD GENERATOR  (generation is client-side; history persisted)
 ──────────────────────────────────────────────────────────── */
 const CHAR_SETS = {
   upper:   'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
@@ -542,7 +556,7 @@ function initGenerator() {
 
   lenInput.addEventListener('input', () => lenVal.textContent = lenInput.value);
 
-  document.getElementById('generate-btn').addEventListener('click', () => {
+  document.getElementById('generate-btn').addEventListener('click', async () => {
     const upper   = document.getElementById('inc-upper').checked;
     const lower   = document.getElementById('inc-lower').checked;
     const numbers = document.getElementById('inc-numbers').checked;
@@ -550,16 +564,70 @@ function initGenerator() {
     if (!upper && !lower && !numbers && !symbols) {
       showToast('warning', 'Select at least one character type.'); return;
     }
-    const pw = generatePassword(parseInt(lenInput.value, 10), upper, lower, numbers, symbols);
+    const len = parseInt(lenInput.value, 10);
+    const pw  = generatePassword(len, upper, lower, numbers, symbols);
     output.value = pw;
     updateStrengthUI('gen-strength-bar', 'gen-strength-label', pw);
-    addLog('info', `Generated a ${lenInput.value}-character password.`);
+    addLog('info', `Generated a ${len}-character password.`);
+
+    // Persist to backend (fire-and-forget)
+    try {
+      await apiFetch('/generator', {
+        method: 'POST',
+        body: JSON.stringify({ password: pw, length: len }),
+      });
+      loadGeneratorHistory();   // refresh history list
+    } catch { /* non-critical */ }
   });
 
   copyBtn.addEventListener('click', () => {
     if (!output.value) { showToast('warning', 'Generate a password first!'); return; }
     copyToClipboard(output.value, 'Password copied to clipboard!');
   });
+}
+
+/* ────────────────────────────────────────────────────────────
+   GENERATOR HISTORY  (loaded from backend)
+──────────────────────────────────────────────────────────── */
+async function loadGeneratorHistory() {
+  const list  = document.getElementById('gen-history-list');
+  const empty = document.getElementById('gen-history-empty');
+  if (!list) return;
+  list.innerHTML = '<li style="color:var(--text-muted);font-size:.85rem"><i class="fas fa-spinner fa-spin"></i> Loading…</li>';
+
+  try {
+    const data = await apiFetch('/generator');
+    const history = data.history || [];
+    list.innerHTML = '';
+    if (history.length === 0) {
+      empty?.classList.remove('hidden');
+      return;
+    }
+    empty?.classList.add('hidden');
+    history.forEach(h => {
+      const li = document.createElement('li');
+      li.className = 'gen-history-item';
+      li.innerHTML = `
+        <span class="gen-hist-pw">${escHtml(h.password)}</span>
+        <span class="gen-hist-meta">${h.length} chars · ${formatTime(h.created_at)}</span>
+        <button class="btn-table btn-view" onclick="copyToClipboard('${escHtml(h.password)}','Copied password!')"
+                title="Copy"><i class="fas fa-copy"></i></button>`;
+      list.appendChild(li);
+    });
+  } catch {
+    list.innerHTML = '<li style="color:var(--text-muted);font-size:.85rem">Could not load history.</li>';
+  }
+}
+
+async function clearGeneratorHistory() {
+  if (!confirm('Clear all generator history?')) return;
+  try {
+    await apiFetch('/generator', { method: 'DELETE' });
+    showToast('info', 'Generator history cleared.');
+    loadGeneratorHistory();
+  } catch (err) {
+    showToast('error', err.message);
+  }
 }
 
 async function copyToClipboard(text, successMsg = 'Copied!') {
@@ -578,7 +646,7 @@ async function copyToClipboard(text, successMsg = 'Copied!') {
 }
 
 /* ────────────────────────────────────────────────────────────
-   ACTIVITY LOGS  (in-memory, session-scoped)
+   ACTIVITY LOGS  (persisted to backend)
 ──────────────────────────────────────────────────────────── */
 const LOG_ICONS = {
   success: 'fa-circle-check',
@@ -594,43 +662,170 @@ function formatTime(isoString) {
   });
 }
 
-function renderLogs() {
+async function renderLogs() {
   const list  = document.getElementById('logs-list');
   const empty = document.getElementById('logs-empty');
-  list.innerHTML = '';
-  if (activityLog.length === 0) { empty.classList.remove('hidden'); return; }
-  empty.classList.add('hidden');
-  activityLog.forEach(log => {
-    const li = document.createElement('li');
-    li.className = `log-item ${log.type}`;
-    li.innerHTML = `
-      <div class="log-icon"><i class="fas ${LOG_ICONS[log.type] || 'fa-circle-info'}"></i></div>
-      <div class="log-body">
-        <span class="log-message">${escHtml(log.message)}</span>
-        <span class="log-time"><i class="fas fa-clock" style="font-size:.7rem;opacity:.6;"></i> ${formatTime(log.time)}</span>
-      </div>
-      <span class="log-badge">${log.type}</span>`;
-    list.appendChild(li);
-  });
+  list.innerHTML = '<li style="color:var(--text-muted);padding:1rem;text-align:center"><i class="fas fa-spinner fa-spin"></i> Loading…</li>';
+
+  try {
+    const data = await apiFetch('/logs');
+    const logs = data.logs || [];
+    list.innerHTML = '';
+    if (logs.length === 0) { empty.classList.remove('hidden'); return; }
+    empty.classList.add('hidden');
+    logs.forEach(log => {
+      const li = document.createElement('li');
+      li.className = `log-item ${log.type}`;
+      li.innerHTML = `
+        <div class="log-icon"><i class="fas ${LOG_ICONS[log.type] || 'fa-circle-info'}"></i></div>
+        <div class="log-body">
+          <span class="log-message">${escHtml(log.message)}</span>
+          <span class="log-time"><i class="fas fa-clock" style="font-size:.7rem;opacity:.6;"></i> ${formatTime(log.created_at)}</span>
+        </div>
+        <span class="log-badge">${log.type}</span>`;
+      list.appendChild(li);
+    });
+  } catch (err) {
+    list.innerHTML = `<li style="color:var(--clr-error);padding:1rem">Could not load logs: ${escHtml(err.message)}</li>`;
+  }
 }
 
 function initLogs() {
-  document.getElementById('clear-logs-btn').addEventListener('click', () => {
+  document.getElementById('clear-logs-btn').addEventListener('click', async () => {
     if (!confirm('Clear all activity logs?')) return;
-    activityLog.length = 0;
-    showToast('info', 'Activity logs cleared.');
-    renderLogs();
+    try {
+      await apiFetch('/logs', { method: 'DELETE' });
+      showToast('info', 'Activity logs cleared.');
+      renderLogs();
+    } catch (err) {
+      showToast('error', err.message);
+    }
   });
 }
 
 /* ────────────────────────────────────────────────────────────
    SIDEBAR & NAVIGATION
 ──────────────────────────────────────────────────────────── */
+/* ────────────────────────────────────────────────────────────
+   NEW DEVICE ALERT
+──────────────────────────────────────────────────────────── */
+function showNewDeviceAlert() {
+  const alert = document.getElementById('device-alert');
+  if (!alert) return;
+  alert.classList.remove('hidden');
+  document.getElementById('device-alert-close')?.addEventListener('click', () => {
+    alert.classList.add('hidden');
+  }, { once: true });
+  document.getElementById('device-alert-sessions')?.addEventListener('click', () => {
+    alert.classList.add('hidden');
+    navigateTo('sessions');
+  }, { once: true });
+}
+
+/* ────────────────────────────────────────────────────────────
+   SESSIONS PAGE
+──────────────────────────────────────────────────────────── */
+async function loadSessions() {
+  const container = document.getElementById('sessions-list');
+  if (!container) return;
+  container.innerHTML = '<p style="color:var(--text-muted);text-align:center"><i class="fas fa-spinner fa-spin"></i> Loading…</p>';
+
+  try {
+    const data     = await apiFetch('/sessions');
+    const sessions = data.sessions || [];
+    container.innerHTML = '';
+
+    if (sessions.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);text-align:center">No active sessions found.</p>';
+      return;
+    }
+
+    sessions.forEach(s => {
+      const card = document.createElement('div');
+      card.className = `session-card${s.is_current ? ' current' : ''}`;
+      const ua = parseUA(s.user_agent);
+      card.innerHTML = `
+        <div class="session-info">
+          <div class="session-device">
+            <i class="fas ${ua.icon}"></i>
+            <span>${escHtml(ua.label)}</span>
+            ${s.is_current ? '<span class="session-badge current-badge">Current</span>' : ''}
+          </div>
+          <div class="session-meta">
+            <span><i class="fas fa-globe"></i> ${escHtml(s.ip_address)}</span>
+            <span><i class="fas fa-clock"></i> Signed in ${formatTime(s.created_at)}</span>
+            <span><i class="fas fa-eye"></i> Last active ${formatTime(s.last_seen)}</span>
+          </div>
+        </div>
+        <div class="session-actions">
+          ${!s.is_current
+              ? `<button class="btn-table btn-del" data-sid="${escHtml(s.session_id)}"
+                        onclick="revokeSession('${escHtml(s.session_id)}')"
+                 ><i class="fas fa-sign-out-alt"></i> Revoke</button>`
+              : ''}
+        </div>`;
+      container.appendChild(card);
+    });
+  } catch (err) {
+    container.innerHTML = `<p style="color:var(--clr-error)">Could not load sessions: ${escHtml(err.message)}</p>`;
+  }
+}
+
+async function revokeSession(sessionId) {
+  if (!confirm('Revoke this session? That device will be signed out immediately.')) return;
+  try {
+    await apiFetch(`/sessions/${sessionId}`, { method: 'DELETE' });
+    addLog('warning', `Session ${sessionId.slice(0,8)}… revoked.`);
+    showToast('warning', 'Session revoked.');
+    loadSessions();
+  } catch (err) {
+    showToast('error', err.message);
+  }
+}
+
+async function revokeAllOtherSessions() {
+  if (!confirm('Sign out all other devices?')) return;
+  try {
+    const data = await apiFetch('/sessions', { method: 'DELETE' });
+    addLog('warning', `Revoked ${data.revoked_count} other session(s).`);
+    showToast('warning', `${data.revoked_count} other session(s) signed out.`);
+    loadSessions();
+  } catch (err) {
+    showToast('error', err.message);
+  }
+}
+
+/** Minimal user-agent label + icon from raw UA string */
+function parseUA(ua = '') {
+  const u = ua.toLowerCase();
+  let label = ua.slice(0, 80); // fallback
+  let icon  = 'fa-desktop';
+  if (u.includes('mobile') || u.includes('android') || u.includes('iphone')) {
+    icon  = 'fa-mobile-alt';
+    label = u.includes('android') ? 'Android Device' : 'iOS Device';
+  } else if (u.includes('tablet') || u.includes('ipad')) {
+    icon  = 'fa-tablet-alt'; label = 'Tablet';
+  } else if (u.includes('macintosh') || u.includes('mac os')) {
+    icon  = 'fa-laptop'; label = 'Mac';
+  } else if (u.includes('windows')) {
+    icon  = 'fa-laptop'; label = 'Windows PC';
+  } else if (u.includes('linux')) {
+    icon  = 'fa-laptop'; label = 'Linux PC';
+  }
+  // Add browser hint
+  if (u.includes('firefox'))       label += ' / Firefox';
+  else if (u.includes('edg'))      label += ' / Edge';
+  else if (u.includes('chrome'))   label += ' / Chrome';
+  else if (u.includes('safari'))   label += ' / Safari';
+  return { label, icon };
+}
+
 function initNavigation() {
   document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     item.addEventListener('click', (e) => { e.preventDefault(); navigateTo(item.dataset.page); });
   });
   document.getElementById('logout-btn').addEventListener('click', logout);
+  document.getElementById('revoke-others-btn')?.addEventListener('click', revokeAllOtherSessions);
 
   const hamburger = document.getElementById('hamburger');
   const sidebar   = document.getElementById('sidebar');

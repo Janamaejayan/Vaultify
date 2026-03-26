@@ -139,6 +139,9 @@
         <a href="#" class="nav-item" data-page="activity-logs" id="nav-logs">
           <i class="fas fa-clock-rotate-left"></i><span>Activity Logs</span>
         </a>
+        <a href="#" class="nav-item" data-page="sessions" id="nav-sessions">
+          <i class="fas fa-shield-halved"></i><span>Sessions</span>
+        </a>
       </nav>
 
       <div class="sidebar-footer">
@@ -164,6 +167,25 @@
           <span id="topbar-username">User</span>
         </div>
       </header>
+
+      <!-- !! NEW DEVICE ALERT BANNER !! (hidden by default) -->
+      <div id="device-alert" class="device-alert hidden" role="alert">
+        <div class="device-alert-body">
+          <i class="fas fa-triangle-exclamation"></i>
+          <div>
+            <strong>New device login detected!</strong>
+            <span>Your account was accessed from an unrecognised device or location. If this wasn't you, check your sessions and change your password immediately.</span>
+          </div>
+        </div>
+        <div class="device-alert-actions">
+          <button class="btn btn-sm btn-primary" id="device-alert-sessions">
+            <i class="fas fa-shield-halved"></i> View Sessions
+          </button>
+          <button class="btn btn-sm btn-ghost" id="device-alert-close">
+            <i class="fas fa-xmark"></i> Dismiss
+          </button>
+        </div>
+      </div>
 
       <!-- ── ADD PASSWORD PAGE ── -->
       <section class="page-section active" id="page-add-password">
@@ -322,6 +344,23 @@
             <i class="fas fa-rotate"></i> Generate Password
           </button>
         </div>
+
+        <!-- Generated Password History -->
+        <div class="card" style="margin-top:1.5rem">
+          <div class="logs-toolbar">
+            <h3 style="margin:0;font-size:1rem"><i class="fas fa-history"></i> Generated History</h3>
+            <button class="btn btn-ghost btn-sm" onclick="clearGeneratorHistory()">
+              <i class="fas fa-trash"></i> Clear
+            </button>
+          </div>
+          <ul id="gen-history-list" class="gen-history-list">
+            <!-- Populated by JS -->
+          </ul>
+          <div id="gen-history-empty" class="empty-state hidden">
+            <i class="fas fa-wand-sparkles"></i>
+            <p>No generated passwords yet.</p>
+          </div>
+        </div>
       </section>
 
       <!-- ── ACTIVITY LOGS PAGE ── -->
@@ -343,6 +382,26 @@
           <div id="logs-empty" class="empty-state hidden">
             <i class="fas fa-scroll"></i>
             <p>No activity recorded yet.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── SESSIONS PAGE ── -->
+      <section class="page-section" id="page-sessions">
+        <div class="section-header">
+          <h2><i class="fas fa-shield-halved"></i> Active Sessions</h2>
+          <p>Manage all devices that are signed into your account.</p>
+        </div>
+
+        <div class="card" style="padding:1.25rem 1.5rem">
+          <div class="logs-toolbar">
+            <span style="font-size:.9rem;color:var(--text-muted)">Your current session is highlighted.</span>
+            <button class="btn btn-ghost btn-sm" id="revoke-others-btn">
+              <i class="fas fa-sign-out-alt"></i> Sign Out All Other Devices
+            </button>
+          </div>
+          <div id="sessions-list" style="margin-top:1rem">
+            <!-- Populated by JS -->
           </div>
         </div>
       </section>

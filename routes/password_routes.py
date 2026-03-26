@@ -30,7 +30,8 @@ passwords_bp = Blueprint("passwords", __name__)
 def jwt_required(f):
     """
     Decorator that validates the Bearer token from the Authorization header.
-    On success, sets g.user_id and g.username for use in the route.
+    On success, sets g.user_id, g.username, and g.session_id for use in the route.
+    Also checks whether the session has been revoked in the DB.
     On failure, returns 401 Unauthorized.
     """
     @wraps(f)
@@ -47,8 +48,25 @@ def jwt_required(f):
         except pyjwt.InvalidTokenError:
             return jsonify({"error": "Invalid token."}), 401
 
-        g.user_id  = payload["user_id"]
-        g.username = payload["username"]
+        # ── Session revocation check ─────────────────────────
+        session_id = payload.get("session_id")
+        if session_id:
+            conn = get_db()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT revoked FROM login_sessions WHERE session_id = %s",
+                        (session_id,),
+                    )
+                    row = cur.fetchone()
+                    if row and row["revoked"]:
+                        return jsonify({"error": "Session revoked. Please log in again."}), 401
+            finally:
+                conn.close()
+
+        g.user_id    = payload["user_id"]
+        g.username   = payload["username"]
+        g.session_id = session_id
         return f(*args, **kwargs)
 
     return wrapper
