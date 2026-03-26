@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vaultify — Secure Password Manager</title>
+  <meta name="description" content="Vaultify is a secure, modern password manager web app. Store, generate, and manage your passwords safely." />
+  <link rel="stylesheet" href="style.css" />
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ============================================================
+       TOAST NOTIFICATION CONTAINER
+  ============================================================ -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- ============================================================
+       AUTH WRAPPER  (Login / Register)
+  ============================================================ -->
+  <div id="auth-wrapper" class="auth-wrapper">
+
+    <!-- ── LOGIN PAGE ── -->
+    <section id="page-login" class="auth-card active">
+      <div class="auth-logo">
+        <div class="logo-icon"><i class="fas fa-shield-halved"></i></div>
+        <h1>Vaultify</h1>
+        <p>Your secrets, secured.</p>
+      </div>
+
+      <form id="login-form" novalidate>
+        <div class="form-group">
+          <label for="login-username"><i class="fas fa-user"></i> Username</label>
+          <input type="text" id="login-username" placeholder="Enter your username" autocomplete="username" />
+          <span class="field-error" id="login-username-err"></span>
+        </div>
+        <div class="form-group">
+          <label for="login-password"><i class="fas fa-lock"></i> Password</label>
+          <div class="input-icon-wrap">
+            <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password" />
+            <button type="button" class="toggle-pw" data-target="login-password" aria-label="Toggle password visibility">
+              <i class="fas fa-eye"></i>
+            </button>
+          </div>
+          <span class="field-error" id="login-password-err"></span>
+        </div>
+        <div id="login-alert" class="alert hidden"></div>
+        <button type="submit" class="btn btn-primary btn-full" id="login-btn">
+          <i class="fas fa-right-to-bracket"></i> Login
+        </button>
+      </form>
+
+      <p class="auth-switch">Don't have an account?
+        <a href="#" id="go-register">Register here</a>
+      </p>
+
+      <div class="demo-hint">
+        <i class="fas fa-circle-info"></i>
+        <span>Demo credentials: <strong>admin</strong> / <strong>Admin@123</strong></span>
+      </div>
+    </section>
+
+    <!-- ── REGISTER PAGE ── -->
+    <section id="page-register" class="auth-card">
+      <div class="auth-logo">
+        <div class="logo-icon"><i class="fas fa-shield-halved"></i></div>
+        <h1>Create Account</h1>
+        <p>Join Vaultify today</p>
+      </div>
+
+      <form id="register-form" novalidate>
+        <div class="form-group">
+          <label for="reg-username"><i class="fas fa-user"></i> Username</label>
+          <input type="text" id="reg-username" placeholder="Choose a username" autocomplete="username" />
+          <span class="field-error" id="reg-username-err"></span>
+        </div>
+        <div class="form-group">
+          <label for="reg-password"><i class="fas fa-lock"></i> Password</label>
+          <div class="input-icon-wrap">
+            <input type="password" id="reg-password" placeholder="Create a strong password" autocomplete="new-password" />
+            <button type="button" class="toggle-pw" data-target="reg-password" aria-label="Toggle password visibility">
+              <i class="fas fa-eye"></i>
+            </button>
+          </div>
+          <div class="strength-bar-wrap">
+            <div class="strength-bar" id="strength-bar"></div>
+          </div>
+          <span class="strength-label" id="strength-label"></span>
+          <span class="field-error" id="reg-password-err"></span>
+        </div>
+        <div class="form-group">
+          <label for="reg-confirm"><i class="fas fa-lock-open"></i> Confirm Password</label>
+          <div class="input-icon-wrap">
+            <input type="password" id="reg-confirm" placeholder="Repeat your password" autocomplete="new-password" />
+            <button type="button" class="toggle-pw" data-target="reg-confirm" aria-label="Toggle confirm password visibility">
+              <i class="fas fa-eye"></i>
+            </button>
+          </div>
+          <span class="field-error" id="reg-confirm-err"></span>
+        </div>
+        <div id="register-alert" class="alert hidden"></div>
+        <button type="submit" class="btn btn-primary btn-full">
+          <i class="fas fa-user-plus"></i> Register
+        </button>
+      </form>
+
+      <p class="auth-switch">Already have an account?
+        <a href="#" id="go-login">Login here</a>
+      </p>
+    </section>
+
+  </div><!-- /auth-wrapper -->
+
+  <!-- ============================================================
+       DASHBOARD  (hidden until logged in)
+  ============================================================ -->
+  <div id="dashboard" class="dashboard hidden">
+
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <i class="fas fa-shield-halved"></i>
+        <span>Vaultify</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-page="add-password" id="nav-add">
+          <i class="fas fa-plus-circle"></i><span>Add Password</span>
+        </a>
+        <a href="#" class="nav-item" data-page="view-passwords" id="nav-view">
+          <i class="fas fa-key"></i><span>Stored Passwords</span>
+        </a>
+        <a href="#" class="nav-item" data-page="generator" id="nav-gen">
+          <i class="fas fa-dice"></i><span>Generator</span>
+        </a>
+        <a href="#" class="nav-item" data-page="activity-logs" id="nav-logs">
+          <i class="fas fa-clock-rotate-left"></i><span>Activity Logs</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="btn btn-ghost btn-full" id="logout-btn">
+          <i class="fas fa-right-from-bracket"></i> Logout
+        </button>
+      </div>
+    </aside>
+
+    <!-- ── MAIN CONTENT ── -->
+    <div class="main-content">
+
+      <!-- Top bar -->
+      <header class="topbar">
+        <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+          <i class="fas fa-bars"></i>
+        </button>
+        <div class="topbar-info">
+          <div class="topbar-title" id="topbar-title">Add Password</div>
+        </div>
+        <div class="user-chip">
+          <i class="fas fa-circle-user"></i>
+          <span id="topbar-username">User</span>
+        </div>
+      </header>
+
+      <!-- ── ADD PASSWORD PAGE ── -->
+      <section class="page-section active" id="page-add-password">
+        <div class="section-header">
+          <h2><i class="fas fa-plus-circle"></i> Add New Password</h2>
+          <p>All entries are AES-256 encrypted before storage.</p>
+        </div>
+
+        <div class="card form-card">
+          <form id="add-password-form" novalidate>
+            <div class="form-group">
+              <label for="ap-site"><i class="fas fa-globe"></i> Website / App Name</label>
+              <input type="text" id="ap-site" placeholder="e.g. Google, Facebook" />
+              <span class="field-error" id="ap-site-err"></span>
+            </div>
+            <div class="form-group">
+              <label for="ap-user"><i class="fas fa-at"></i> Username / Email</label>
+              <input type="text" id="ap-user" placeholder="e.g. john@example.com" />
+              <span class="field-error" id="ap-user-err"></span>
+            </div>
+            <div class="form-group">
+              <label for="ap-pass"><i class="fas fa-lock"></i> Password</label>
+              <div class="input-icon-wrap">
+                <input type="password" id="ap-pass" placeholder="Enter or paste password" />
+                <button type="button" class="toggle-pw" data-target="ap-pass" aria-label="Toggle">
+                  <i class="fas fa-eye"></i>
+                </button>
+              </div>
+              <div class="strength-bar-wrap">
+                <div class="strength-bar" id="ap-strength-bar"></div>
+              </div>
+              <span class="strength-label" id="ap-strength-label"></span>
+              <span class="field-error" id="ap-pass-err"></span>
+            </div>
+
+            <div id="add-password-alert" class="alert hidden"></div>
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-floppy-disk"></i> Encrypt &amp; Save
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ── VIEW PASSWORDS PAGE ── -->
+      <section class="page-section" id="page-view-passwords">
+        <div class="section-header">
+          <h2><i class="fas fa-key"></i> Stored Passwords</h2>
+          <p>Click the eye icon to reveal individual passwords.</p>
+        </div>
+
+        <div class="card table-card">
+          <div class="table-toolbar">
+            <div class="search-wrap">
+              <i class="fas fa-magnifying-glass"></i>
+              <input type="text" id="pw-search" placeholder="Search websites…" />
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table id="pw-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Website</th>
+                  <th>Username</th>
+                  <th>Password</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="pw-table-body">
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+            <div id="pw-empty" class="empty-state hidden">
+              <i class="fas fa-folder-open"></i>
+              <p>No passwords saved yet.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Edit Modal -->
+        <div class="modal-overlay hidden" id="edit-modal">
+          <div class="modal">
+            <div class="modal-header">
+              <h3><i class="fas fa-pen"></i> Edit Entry</h3>
+              <button class="modal-close" id="edit-modal-close"><i class="fas fa-xmark"></i></button>
+            </div>
+            <form id="edit-form">
+              <input type="hidden" id="edit-idx" />
+              <div class="form-group">
+                <label for="edit-site">Website / App</label>
+                <input type="text" id="edit-site" />
+              </div>
+              <div class="form-group">
+                <label for="edit-user">Username / Email</label>
+                <input type="text" id="edit-user" />
+              </div>
+              <div class="form-group">
+                <label for="edit-pass">Password</label>
+                <div class="input-icon-wrap">
+                  <input type="password" id="edit-pass" />
+                  <button type="button" class="toggle-pw" data-target="edit-pass" aria-label="Toggle">
+                    <i class="fas fa-eye"></i>
+                  </button>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── GENERATOR PAGE ── -->
+      <section class="page-section" id="page-generator">
+        <div class="section-header">
+          <h2><i class="fas fa-dice"></i> Password Generator</h2>
+          <p>Generate cryptographically secure passwords.</p>
+        </div>
+
+        <div class="card gen-card">
+          <div class="gen-output-wrap">
+            <input type="text" id="gen-output" readonly placeholder="Click Generate…" aria-label="Generated password" />
+            <button class="btn btn-icon" id="copy-gen-btn" title="Copy to clipboard">
+              <i class="fas fa-copy"></i>
+            </button>
+          </div>
+
+          <div class="gen-options">
+            <div class="gen-option-row">
+              <label for="gen-length">Length: <strong id="gen-length-val">16</strong></label>
+              <input type="range" id="gen-length" min="6" max="64" value="16" />
+            </div>
+            <div class="gen-checkboxes">
+              <label class="checkbox-label">
+                <input type="checkbox" id="inc-upper" checked /> Uppercase (A-Z)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="inc-lower" checked /> Lowercase (a-z)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="inc-numbers" checked /> Numbers (0-9)
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="inc-symbols" /> Symbols (!@#…)
+              </label>
+            </div>
+          </div>
+
+          <div class="gen-strength-wrap">
+            <div class="strength-bar-wrap">
+              <div class="strength-bar" id="gen-strength-bar"></div>
+            </div>
+            <span class="strength-label" id="gen-strength-label"></span>
+          </div>
+
+          <button class="btn btn-primary" id="generate-btn">
+            <i class="fas fa-rotate"></i> Generate Password
+          </button>
+        </div>
+      </section>
+
+      <!-- ── ACTIVITY LOGS PAGE ── -->
+      <section class="page-section" id="page-activity-logs">
+        <div class="section-header">
+          <h2><i class="fas fa-clock-rotate-left"></i> Activity Logs</h2>
+          <p>Track all security events and account actions.</p>
+        </div>
+
+        <div class="card logs-card">
+          <div class="logs-toolbar">
+            <button class="btn btn-ghost btn-sm" id="clear-logs-btn">
+              <i class="fas fa-trash"></i> Clear Logs
+            </button>
+          </div>
+          <ul id="logs-list" class="logs-list">
+            <!-- Populated by JS -->
+          </ul>
+          <div id="logs-empty" class="empty-state hidden">
+            <i class="fas fa-scroll"></i>
+            <p>No activity recorded yet.</p>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /main-content -->
+  </div><!-- /dashboard -->
+
+  <script src="script.js"></script>
+</body>
+</html>
